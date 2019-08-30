@@ -11,12 +11,22 @@ use std::{
     time::Instant,
 };
 
-use cocoa::{appkit::NSApp, base::nil};
+use cocoa::{
+    appkit::{NSApp, NSWindow},
+    base::nil,
+    foundation::NSSize,
+};
 
 use crate::{
+    dpi::LogicalSize,
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopWindowTarget as RootWindowTarget},
-    platform_impl::platform::{observer::EventLoopWaker, util::Never},
+    platform_impl::platform::{
+        event::{EventProxy, EventWrapper},
+        observer::EventLoopWaker,
+        util::{IdRef, Never},
+        window::get_window_id,
+    },
     window::WindowId,
 };
 
@@ -24,8 +34,8 @@ lazy_static! {
     static ref HANDLER: Handler = Default::default();
 }
 
-impl Event<Never> {
-    fn userify<T: 'static>(self) -> Event<T> {
+impl<'a, Never> Event<'a, Never> {
+    fn userify<T: 'static>(self) -> Event<'a, T> {
         self.map_nonuser_event()
             // `Never` can't be constructed, so the `UserEvent` variant can't
             // be present here.
@@ -34,7 +44,8 @@ impl Event<Never> {
 }
 
 pub trait EventHandler: Debug {
-    fn handle_nonuser_event(&mut self, event: Event<Never>, control_flow: &mut ControlFlow);
+    // Not sure probably it should accept Event<'static, Never>
+    fn handle_nonuser_event(&mut self, event: Event<'_, Never>, control_flow: &mut ControlFlow);
     fn handle_user_events(&mut self, control_flow: &mut ControlFlow);
 }
 
@@ -53,8 +64,17 @@ impl<T> Debug for EventLoopHandler<T> {
     }
 }
 
+<<<<<<< HEAD
 impl<T> EventHandler for EventLoopHandler<T> {
     fn handle_nonuser_event(&mut self, event: Event<Never>, control_flow: &mut ControlFlow) {
+=======
+impl<F, T> EventHandler for EventLoopHandler<F, T>
+where
+    F: 'static + FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
+    T: 'static,
+{
+    fn handle_nonuser_event(&mut self, event: Event<'_, Never>, control_flow: &mut ControlFlow) {
+>>>>>>> macOS: Dpi overhaul (#997)
         (self.callback)(event.userify(), &self.window_target, control_flow);
         self.will_exit |= *control_flow == ControlFlow::Exit;
         if self.will_exit {
@@ -83,7 +103,12 @@ struct Handler {
     control_flow_prev: Mutex<ControlFlow>,
     start_time: Mutex<Option<Instant>>,
     callback: Mutex<Option<Box<dyn EventHandler>>>,
+<<<<<<< HEAD
     pending_events: Mutex<VecDeque<Event<Never>>>,
+=======
+    pending_events: Mutex<VecDeque<Event<'static, Never>>>,
+    deferred_events: Mutex<VecDeque<EventWrapper>>,
+>>>>>>> macOS: Dpi overhaul (#997)
     pending_redraw: Mutex<Vec<WindowId>>,
     waker: Mutex<EventLoopWaker>,
 }
@@ -92,15 +117,23 @@ unsafe impl Send for Handler {}
 unsafe impl Sync for Handler {}
 
 impl Handler {
-    fn events<'a>(&'a self) -> MutexGuard<'a, VecDeque<Event<Never>>> {
+    fn events(&self) -> MutexGuard<'_, VecDeque<Event<'static, Never>>> {
         self.pending_events.lock().unwrap()
     }
 
+<<<<<<< HEAD
     fn redraw<'a>(&'a self) -> MutexGuard<'a, Vec<WindowId>> {
+=======
+    fn deferred(&self) -> MutexGuard<'_, VecDeque<EventWrapper>> {
+        self.deferred_events.lock().unwrap()
+    }
+
+    fn redraw(&self) -> MutexGuard<'_, Vec<WindowId>> {
+>>>>>>> macOS: Dpi overhaul (#997)
         self.pending_redraw.lock().unwrap()
     }
 
-    fn waker<'a>(&'a self) -> MutexGuard<'a, EventLoopWaker> {
+    fn waker(&self) -> MutexGuard<'_, EventLoopWaker> {
         self.waker.lock().unwrap()
     }
 
@@ -136,10 +169,17 @@ impl Handler {
         *self.start_time.lock().unwrap() = Some(Instant::now());
     }
 
-    fn take_events(&self) -> VecDeque<Event<Never>> {
+    fn take_events(&self) -> VecDeque<Event<'_, Never>> {
         mem::replace(&mut *self.events(), Default::default())
     }
 
+<<<<<<< HEAD
+=======
+    fn take_deferred(&self) -> VecDeque<EventWrapper> {
+        mem::replace(&mut *self.deferred(), Default::default())
+    }
+
+>>>>>>> macOS: Dpi overhaul (#997)
     fn should_redraw(&self) -> Vec<WindowId> {
         mem::replace(&mut *self.redraw(), Default::default())
     }
@@ -152,7 +192,7 @@ impl Handler {
         self.in_callback.store(in_callback, Ordering::Release);
     }
 
-    fn handle_nonuser_event(&self, event: Event<Never>) {
+    fn handle_nonuser_event(&self, event: Event<'_, Never>) {
         if let Some(ref mut callback) = *self.callback.lock().unwrap() {
             callback.handle_nonuser_event(event, &mut *self.control_flow.lock().unwrap());
         }
@@ -163,6 +203,42 @@ impl Handler {
             callback.handle_user_events(&mut *self.control_flow.lock().unwrap());
         }
     }
+
+    fn handle_hidpi_factor_changed_event(
+        &self,
+        ns_window: IdRef,
+        suggested_size: LogicalSize,
+        hidpi_factor: f64,
+    ) {
+        let size = suggested_size.to_physical(hidpi_factor);
+        let new_inner_size = &mut Some(size);
+        let event = Event::WindowEvent {
+            window_id: WindowId(get_window_id(*ns_window)),
+            event: WindowEvent::HiDpiFactorChanged {
+                hidpi_factor,
+                new_inner_size,
+            },
+        };
+
+        self.handle_nonuser_event(event);
+
+        // let origin = unsafe { NSWindow::frame(*ns_window).origin };
+        let physical_size = new_inner_size.unwrap_or(size);
+        let logical_size = physical_size.to_logical(hidpi_factor);
+        let size = NSSize::new(logical_size.width, logical_size.height);
+        // let rect = NSRect::new(origin, size);
+        unsafe { NSWindow::setContentSize_(*ns_window, size) };
+    }
+
+    fn handle_event(&self, proxy: EventProxy) {
+        match proxy {
+            EventProxy::HiDpiFactorChangedProxy {
+                ns_window,
+                suggested_size,
+                hidpi_factor,
+            } => self.handle_hidpi_factor_changed_event(ns_window, suggested_size, hidpi_factor),
+        }
+    }
 }
 
 pub enum AppState {}
@@ -171,7 +247,12 @@ impl AppState {
     // This function extends lifetime of `callback` to 'static as its side effect
     pub unsafe fn set_callback<F, T>(callback: F, window_target: Rc<RootWindowTarget<T>>)
     where
+<<<<<<< HEAD
         F: FnMut(Event<T>, &RootWindowTarget<T>, &mut ControlFlow),
+=======
+        F: 'static + FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
+        T: 'static,
+>>>>>>> macOS: Dpi overhaul (#997)
     {
         *HANDLER.callback.lock().unwrap() = Some(Box::new(EventLoopHandler {
             // This transmute is always safe, in case it was reached through `run`, since our
@@ -241,20 +322,40 @@ impl AppState {
         }
     }
 
-    pub fn queue_event(event: Event<Never>) {
+    pub fn queue_event(event: Event<'static, Never>) {
         if !unsafe { msg_send![class!(NSThread), isMainThread] } {
             panic!("Event queued from different thread: {:#?}", event);
         }
         HANDLER.events().push_back(event);
     }
 
-    pub fn queue_events(mut events: VecDeque<Event<Never>>) {
+    pub fn queue_events(mut events: VecDeque<Event<'static, Never>>) {
         if !unsafe { msg_send![class!(NSThread), isMainThread] } {
             panic!("Events queued from different thread: {:#?}", events);
         }
         HANDLER.events().append(&mut events);
     }
 
+<<<<<<< HEAD
+=======
+    pub fn send_event_immediately(wrapper: EventWrapper) {
+        if !unsafe { msg_send![class!(NSThread), isMainThread] } {
+            panic!("Event sent from different thread: {:#?}", wrapper);
+        }
+        HANDLER.deferred().push_back(wrapper);
+        if !HANDLER.get_in_callback() {
+            HANDLER.set_in_callback(true);
+            for wrapper in HANDLER.take_deferred() {
+                match wrapper {
+                    EventWrapper::StaticEvent(event) => HANDLER.handle_nonuser_event(event),
+                    EventWrapper::EventProxy(proxy) => HANDLER.handle_event(proxy),
+                };
+            }
+            HANDLER.set_in_callback(false);
+        }
+    }
+
+>>>>>>> macOS: Dpi overhaul (#997)
     pub fn cleared() {
         if !HANDLER.is_ready() {
             return;
