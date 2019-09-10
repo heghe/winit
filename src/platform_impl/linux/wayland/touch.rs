@@ -17,14 +17,17 @@ struct TouchPoint {
 
 pub(crate) fn implement_touch<T: 'static>(
     seat: &wl_seat::WlSeat,
+<<<<<<< HEAD
     sink: Arc<Mutex<WindowEventsSink<T>>>,
+=======
+    sink: WindowEventsSink,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     store: Arc<Mutex<WindowStore>>,
 ) -> WlTouch {
     let mut pending_ids = Vec::new();
     seat.get_touch(|touch| {
         touch.implement_closure(
             move |evt, _| {
-                let mut sink = sink.lock().unwrap();
                 let store = store.lock().unwrap();
                 match evt {
                     TouchEvent::Down {

@@ -18,7 +18,7 @@ pub use self::{
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     ffi::CStr,
     mem::{self, MaybeUninit},
     ops::Deref,
@@ -26,9 +26,14 @@ use std::{
     rc::Rc,
     slice,
     sync::{mpsc, Arc, Mutex, Weak},
+    time::{Duration, Instant},
 };
 
 use libc::{self, setlocale, LC_CTYPE};
+
+use mio::{unix::EventedFd, Events, Poll, PollOpt, Ready, Token};
+
+use mio_extras::channel::{channel, Receiver, Sender};
 
 use self::{
     dnd::{Dnd, DndState},
@@ -38,11 +43,14 @@ use self::{
 };
 use crate::{
     error::OsError as RootOsError,
-    event::{Event, WindowEvent},
+    event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopClosed, EventLoopWindowTarget as RootELW},
     platform_impl::{platform::sticky_exit_callback, PlatformSpecificWindowBuilderAttributes},
     window::WindowAttributes,
 };
+
+const X_TOKEN: Token = Token(0);
+const USER_TOKEN: Token = Token(1);
 
 pub struct EventLoopWindowTarget<T> {
     xconn: Arc<XConnection>,
@@ -57,6 +65,7 @@ pub struct EventLoopWindowTarget<T> {
 }
 
 pub struct EventLoop<T: 'static> {
+<<<<<<< HEAD
     inner_loop: ::calloop::EventLoop<()>,
     _x11_source: ::calloop::Source<::calloop::generic::Generic<::calloop::generic::EventedRawFd>>,
     _user_source: ::calloop::Source<::calloop::channel::Channel<T>>,
@@ -65,10 +74,17 @@ pub struct EventLoop<T: 'static> {
     user_sender: ::calloop::channel::Sender<T>,
     pending_events: Rc<RefCell<VecDeque<Event<T>>>>,
     pub(crate) target: Rc<RootELW<T>>,
+=======
+    poll: Poll,
+    event_processor: EventProcessor<T>,
+    user_channel: Receiver<T>,
+    user_sender: Sender<T>,
+    target: Rc<RootELW<T>>,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 }
 
 pub struct EventLoopProxy<T: 'static> {
-    user_sender: ::calloop::channel::Sender<T>,
+    user_sender: Sender<T>,
 }
 
 impl<T: 'static> Clone for EventLoopProxy<T> {
@@ -163,6 +179,7 @@ impl<T: 'static> EventLoop<T> {
         });
 
         // A calloop event loop to drive us
+<<<<<<< HEAD
         let inner_loop = ::calloop::EventLoop::new().unwrap();
 
         // Handle user events
@@ -184,6 +201,29 @@ impl<T: 'static> EventLoop<T> {
         let pending_events: Rc<RefCell<VecDeque<_>>> = Default::default();
 
         let processor = EventProcessor {
+=======
+        let poll = Poll::new().unwrap();
+
+        let (user_sender, user_channel) = channel();
+
+        poll.register(
+            &EventedFd(&get_xtarget(&target).xconn.x11_fd),
+            X_TOKEN,
+            Ready::readable(),
+            PollOpt::level(),
+        )
+        .unwrap();
+
+        poll.register(
+            &user_channel,
+            USER_TOKEN,
+            Ready::readable(),
+            PollOpt::level(),
+        )
+        .unwrap();
+
+        let event_processor = EventProcessor {
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             target: target.clone(),
             dnd,
             devices: Default::default(),
@@ -202,6 +242,7 @@ impl<T: 'static> EventLoop<T> {
             .select_xinput_events(root, ffi::XIAllDevices, ffi::XI_HierarchyChangedMask)
             .queue();
 
+<<<<<<< HEAD
         processor.init_device(ffi::XIAllDevices);
 
         let processor = Rc::new(RefCell::new(processor));
@@ -224,14 +265,18 @@ impl<T: 'static> EventLoop<T> {
                 }
             })
             .unwrap();
+=======
+        event_processor.init_device(ffi::XIAllDevices);
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 
         let result = EventLoop {
-            inner_loop,
-            pending_events,
-            _x11_source,
-            _user_source,
+            poll,
+            user_channel,
             user_sender,
+<<<<<<< HEAD
             pending_user_events,
+=======
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             event_processor,
             target,
         };
@@ -251,10 +296,10 @@ impl<T: 'static> EventLoop<T> {
 
     pub fn run_return<F>(&mut self, mut callback: F)
     where
-        F: FnMut(Event<T>, &RootELW<T>, &mut ControlFlow),
+        F: FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
     {
         let mut control_flow = ControlFlow::default();
-        let wt = get_xtarget(&self.target);
+        let mut events = Events::with_capacity(8);
 
         callback(
             crate::event::Event::NewEvents(crate::event::StartCause::Init),
@@ -263,20 +308,16 @@ impl<T: 'static> EventLoop<T> {
         );
 
         loop {
-            // Empty the event buffer
-            {
-                let mut guard = self.pending_events.borrow_mut();
-                for evt in guard.drain(..) {
-                    sticky_exit_callback(evt, &self.target, &mut control_flow, &mut callback);
-                }
-            }
+            // Process all pending events
+            self.drain_events(&mut callback, &mut control_flow);
+
+            let wt = get_xtarget(&self.target);
 
             // Empty the user event buffer
             {
-                let mut guard = self.pending_user_events.borrow_mut();
-                for evt in guard.drain(..) {
+                while let Ok(event) = self.user_channel.try_recv() {
                     sticky_exit_callback(
-                        crate::event::Event::UserEvent(evt),
+                        crate::event::Event::UserEvent(event),
                         &self.target,
                         &mut control_flow,
                         &mut callback,
@@ -310,69 +351,80 @@ impl<T: 'static> EventLoop<T> {
                 );
             }
 
+<<<<<<< HEAD
+=======
+            let start = Instant::now();
+            let (mut cause, deadline, timeout);
+
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             match control_flow {
                 ControlFlow::Exit => break,
                 ControlFlow::Poll => {
-                    // non-blocking dispatch
-                    self.inner_loop
-                        .dispatch(Some(::std::time::Duration::from_millis(0)), &mut ())
-                        .unwrap();
-                    callback(
-                        crate::event::Event::NewEvents(crate::event::StartCause::Poll),
-                        &self.target,
-                        &mut control_flow,
-                    );
+                    cause = StartCause::Poll;
+                    deadline = None;
+                    timeout = Some(Duration::from_millis(0));
                 }
                 ControlFlow::Wait => {
-                    self.inner_loop.dispatch(None, &mut ()).unwrap();
-                    callback(
-                        crate::event::Event::NewEvents(crate::event::StartCause::WaitCancelled {
-                            start: ::std::time::Instant::now(),
-                            requested_resume: None,
-                        }),
-                        &self.target,
-                        &mut control_flow,
-                    );
-                }
-                ControlFlow::WaitUntil(deadline) => {
-                    let start = ::std::time::Instant::now();
-                    // compute the blocking duration
-                    let duration = if deadline > start {
-                        deadline - start
-                    } else {
-                        ::std::time::Duration::from_millis(0)
+                    cause = StartCause::WaitCancelled {
+                        start,
+                        requested_resume: None,
                     };
-                    self.inner_loop.dispatch(Some(duration), &mut ()).unwrap();
-                    let now = std::time::Instant::now();
-                    if now < deadline {
-                        callback(
-                            crate::event::Event::NewEvents(
-                                crate::event::StartCause::WaitCancelled {
-                                    start,
-                                    requested_resume: Some(deadline),
-                                },
-                            ),
-                            &self.target,
-                            &mut control_flow,
-                        );
+                    deadline = None;
+                    timeout = None;
+                }
+                ControlFlow::WaitUntil(wait_deadline) => {
+                    cause = StartCause::WaitCancelled {
+                        start,
+                        requested_resume: Some(wait_deadline),
+                    };
+                    timeout = if wait_deadline > start {
+                        Some(wait_deadline - start)
                     } else {
-                        callback(
-                            crate::event::Event::NewEvents(
-                                crate::event::StartCause::ResumeTimeReached {
-                                    start,
-                                    requested_resume: deadline,
-                                },
-                            ),
-                            &self.target,
-                            &mut control_flow,
-                        );
-                    }
+                        Some(Duration::from_millis(0))
+                    };
+                    deadline = Some(wait_deadline);
                 }
             }
 
+<<<<<<< HEAD
             // If the user callback had any interaction with the X server,
             // it may have received and buffered some user input events.
             self.drain_events();
+=======
+            if self.event_processor.poll() {
+                // If the XConnection already contains buffered events, we don't
+                // need to wait for data on the socket.
+                // However, we still need to check for user events.
+                self.poll
+                    .poll(&mut events, Some(Duration::from_millis(0)))
+                    .unwrap();
+                events.clear();
+
+                callback(
+                    crate::event::Event::NewEvents(cause),
+                    &self.target,
+                    &mut control_flow,
+                );
+            } else {
+                self.poll.poll(&mut events, timeout).unwrap();
+                events.clear();
+
+                let wait_cancelled = deadline.map_or(false, |deadline| Instant::now() < deadline);
+
+                if wait_cancelled {
+                    cause = StartCause::WaitCancelled {
+                        start,
+                        requested_resume: deadline,
+                    };
+                }
+
+                callback(
+                    crate::event::Event::NewEvents(cause),
+                    &self.target,
+                    &mut control_flow,
+                );
+            }
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
         }
 
         callback(
@@ -384,12 +436,13 @@ impl<T: 'static> EventLoop<T> {
 
     pub fn run<F>(mut self, callback: F) -> !
     where
-        F: 'static + FnMut(Event<T>, &RootELW<T>, &mut ControlFlow),
+        F: 'static + FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
     {
         self.run_return(callback);
         ::std::process::exit(0);
     }
 
+<<<<<<< HEAD
     fn drain_events(&self) {
         let mut processor = self.event_processor.borrow_mut();
         let mut pending_events = self.pending_events.borrow_mut();
@@ -411,6 +464,21 @@ fn drain_events<T: 'static>(
     while unsafe { processor.poll_one_event(xev.as_mut_ptr()) } {
         let mut xev = unsafe { xev.assume_init() };
         processor.process_event(&mut xev, &mut callback);
+=======
+    fn drain_events<F>(&mut self, callback: &mut F, control_flow: &mut ControlFlow)
+    where
+        F: FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
+    {
+        let target = &self.target;
+        let mut xev = MaybeUninit::uninit();
+
+        while unsafe { self.event_processor.poll_one_event(xev.as_mut_ptr()) } {
+            let mut xev = unsafe { xev.assume_init() };
+            self.event_processor.process_event(&mut xev, |event| {
+                sticky_exit_callback(event, target, control_flow, callback);
+            });
+        }
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     }
 }
 

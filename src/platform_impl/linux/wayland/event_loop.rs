@@ -2,11 +2,12 @@ use std::{
     cell::RefCell,
     collections::VecDeque,
     fmt,
-    rc::Rc,
+    io::ErrorKind,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
+<<<<<<< HEAD
 use smithay_client_toolkit::reexports::protocols::unstable::pointer_constraints::v1::client::{
     zwp_locked_pointer_v1::ZwpLockedPointerV1, zwp_pointer_constraints_v1::ZwpPointerConstraintsV1,
 };
@@ -19,10 +20,15 @@ use smithay_client_toolkit::pointer::{AutoPointer, AutoThemer};
 use smithay_client_toolkit::reexports::client::protocol::{
     wl_compositor::WlCompositor, wl_shm::WlShm, wl_surface::WlSurface,
 };
+=======
+use mio::{Events, Poll, PollOpt, Ready, Token};
+
+use mio_extras::channel::{channel, Receiver, Sender};
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 
 use crate::{
-    dpi::{PhysicalPosition, PhysicalSize},
-    event::ModifiersState,
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
+    event::{Event, ModifiersState, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopClosed, EventLoopWindowTarget as RootELW},
     monitor::{MonitorHandle as RootMonitorHandle, VideoMode as RootVideoMode},
     platform_impl::platform::{
@@ -43,6 +49,7 @@ use smithay_client_toolkit::{
     Environment,
 };
 
+<<<<<<< HEAD
 pub struct WindowEventsSink<T> {
     buffer: VecDeque<crate::event::Event<T>>,
 }
@@ -217,16 +224,42 @@ impl CursorManager {
                 }
             }
         }
+=======
+const KBD_TOKEN: Token = Token(0);
+const USER_TOKEN: Token = Token(1);
+const EVQ_TOKEN: Token = Token(2);
+
+#[derive(Clone)]
+pub struct WindowEventsSink {
+    sender: Sender<(WindowEvent<'static>, crate::window::WindowId)>,
+}
+
+impl WindowEventsSink {
+    pub fn new(
+        sender: Sender<(WindowEvent<'static>, crate::window::WindowId)>,
+    ) -> WindowEventsSink {
+        WindowEventsSink { sender }
+    }
+
+    pub fn send_event(&self, evt: WindowEvent<'static>, wid: WindowId) {
+        self.sender
+            .send((
+                evt,
+                crate::window::WindowId(crate::platform_impl::WindowId::Wayland(wid)),
+            ))
+            .unwrap();
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     }
 }
 
 pub struct EventLoop<T: 'static> {
-    // The loop
-    inner_loop: ::calloop::EventLoop<()>,
+    // Poll instance
+    poll: Poll,
     // The wayland display
     pub display: Arc<Display>,
     // The output manager
     pub outputs: OutputMgr,
+<<<<<<< HEAD
     // Our sink, shared with some handlers, buffering the events
     sink: Arc<Mutex<WindowEventsSink<T>>>,
     pending_user_events: Rc<RefCell<VecDeque<T>>>,
@@ -236,6 +269,11 @@ pub struct EventLoop<T: 'static> {
     _kbd_source: ::calloop::Source<
         ::calloop::channel::Channel<(crate::event::WindowEvent, super::WindowId)>,
     >,
+=======
+    kbd_channel: Receiver<(WindowEvent<'static>, crate::window::WindowId)>,
+    user_channel: Receiver<T>,
+    user_sender: Sender<T>,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     window_target: RootELW<T>,
 }
 
@@ -243,12 +281,21 @@ pub struct EventLoop<T: 'static> {
 //
 // We should only try and wake up the `EventLoop` if it still exists, so we hold Weak ptrs.
 pub struct EventLoopProxy<T: 'static> {
+<<<<<<< HEAD
     user_sender: calloop::channel::Sender<T>,
 }
 
 pub struct EventLoopWindowTarget<T> {
     // The event queue
     pub evq: RefCell<::calloop::Source<EventQueue>>,
+=======
+    user_sender: Sender<T>,
+}
+
+pub struct EventLoopWindowTarget<T> {
+    // the event queue
+    pub evq: RefCell<EventQueue>,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     // The window store
     pub store: Arc<Mutex<WindowStore>>,
     // The cursor manager
@@ -283,12 +330,12 @@ impl<T: 'static> EventLoop<T> {
         let (display, mut event_queue) = Display::connect_to_env()?;
 
         let display = Arc::new(display);
-        let sink = Arc::new(Mutex::new(WindowEventsSink::new()));
         let store = Arc::new(Mutex::new(WindowStore::new()));
         let seats = Arc::new(Mutex::new(Vec::new()));
 
-        let inner_loop = ::calloop::EventLoop::new().unwrap();
+        let poll = Poll::new().unwrap();
 
+<<<<<<< HEAD
         let (kbd_sender, kbd_channel) = ::calloop::channel::channel();
         let kbd_sink = sink.clone();
         let kbd_source = inner_loop
@@ -298,11 +345,19 @@ impl<T: 'static> EventLoop<T> {
                     kbd_sink.lock().unwrap().send_window_event(evt, wid);
                 }
             })
+=======
+        let (kbd_sender, kbd_channel) = channel();
+
+        let sink = WindowEventsSink::new(kbd_sender);
+
+        poll.register(&kbd_channel, KBD_TOKEN, Ready::readable(), PollOpt::level())
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             .unwrap();
 
         let pointer_constraints_proxy = Arc::new(Mutex::new(None));
 
         let mut seat_manager = SeatManager {
+<<<<<<< HEAD
             sink: sink.clone(),
             relative_pointer_manager_proxy: Rc::new(RefCell::new(None)),
             pointer_constraints_proxy: pointer_constraints_proxy.clone(),
@@ -310,6 +365,11 @@ impl<T: 'static> EventLoop<T> {
             seats: seats.clone(),
             kbd_sender,
             cursor_manager: Arc::new(Mutex::new(CursorManager::new(pointer_constraints_proxy))),
+=======
+            sink,
+            store: store.clone(),
+            seats: seats.clone(),
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
         };
 
         let cursor_manager = seat_manager.cursor_manager.clone();
@@ -388,38 +448,30 @@ impl<T: 'static> EventLoop<T> {
         )
         .unwrap();
 
-        let source = inner_loop
-            .handle()
-            .insert_source(event_queue, |(), &mut ()| {})
+        poll.register(&event_queue, EVQ_TOKEN, Ready::readable(), PollOpt::level())
             .unwrap();
 
-        let pending_user_events = Rc::new(RefCell::new(VecDeque::new()));
-        let pending_user_events2 = pending_user_events.clone();
+        let (user_sender, user_channel) = channel();
 
-        let (user_sender, user_channel) = ::calloop::channel::channel();
-
-        let user_source = inner_loop
-            .handle()
-            .insert_source(user_channel, move |evt, &mut ()| {
-                if let ::calloop::channel::Event::Msg(msg) = evt {
-                    pending_user_events2.borrow_mut().push_back(msg);
-                }
-            })
-            .unwrap();
+        poll.register(
+            &user_channel,
+            USER_TOKEN,
+            Ready::readable(),
+            PollOpt::level(),
+        )
+        .unwrap();
 
         let cursor_manager_clone = cursor_manager.clone();
         Ok(EventLoop {
-            inner_loop,
-            sink,
-            pending_user_events,
+            poll,
             display: display.clone(),
             outputs: env.outputs.clone(),
-            _user_source: user_source,
             user_sender,
-            _kbd_source: kbd_source,
+            user_channel,
+            kbd_channel,
             window_target: RootELW {
                 p: crate::platform_impl::EventLoopWindowTarget::Wayland(EventLoopWindowTarget {
-                    evq: RefCell::new(source),
+                    evq: RefCell::new(event_queue),
                     store,
                     env,
                     cursor_manager: cursor_manager_clone,
@@ -441,7 +493,7 @@ impl<T: 'static> EventLoop<T> {
 
     pub fn run<F>(mut self, callback: F) -> !
     where
-        F: 'static + FnMut(crate::event::Event<T>, &RootELW<T>, &mut ControlFlow),
+        F: 'static + FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
     {
         self.run_return(callback);
         std::process::exit(0);
@@ -449,67 +501,68 @@ impl<T: 'static> EventLoop<T> {
 
     pub fn run_return<F>(&mut self, mut callback: F)
     where
-        F: FnMut(crate::event::Event<T>, &RootELW<T>, &mut ControlFlow),
+        F: FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
     {
         // send pending events to the server
         self.display.flush().expect("Wayland connection lost.");
 
         let mut control_flow = ControlFlow::default();
-
-        let sink = self.sink.clone();
-        let user_events = self.pending_user_events.clone();
+        let mut events = Events::with_capacity(8);
 
         callback(
-            crate::event::Event::NewEvents(crate::event::StartCause::Init),
+            Event::NewEvents(StartCause::Init),
             &self.window_target,
             &mut control_flow,
         );
 
         loop {
-            self.post_dispatch_triggers();
+            // Read events from the event queue
+            {
+                let mut evq = get_target(&self.window_target).evq.borrow_mut();
 
-            // empty buffer of events
-            {
-                let mut guard = sink.lock().unwrap();
-                guard.empty_with(|evt| {
-                    sticky_exit_callback(
-                        evt,
-                        &self.window_target,
-                        &mut control_flow,
-                        &mut callback,
-                    );
-                });
-            }
-            // empty user events
-            {
-                let mut guard = user_events.borrow_mut();
-                for evt in guard.drain(..) {
-                    sticky_exit_callback(
-                        crate::event::Event::UserEvent(evt),
-                        &self.window_target,
-                        &mut control_flow,
-                        &mut callback,
-                    );
+                evq.dispatch_pending()
+                    .expect("failed to dispatch wayland events");
+
+                if let Some(read) = evq.prepare_read() {
+                    if let Err(e) = read.read_events() {
+                        if e.kind() != ErrorKind::WouldBlock {
+                            panic!("failed to read wayland events: {}", e);
+                        }
+                    }
+
+                    evq.dispatch_pending()
+                        .expect("failed to dispatch wayland events");
                 }
             }
+
+            self.post_dispatch_triggers(&mut callback, &mut control_flow);
+
+            while let Ok((event, window_id)) = self.kbd_channel.try_recv() {
+                sticky_exit_callback(
+                    Event::WindowEvent { event, window_id },
+                    &self.window_target,
+                    &mut control_flow,
+                    &mut callback,
+                );
+            }
+
+            while let Ok(event) = self.user_channel.try_recv() {
+                sticky_exit_callback(
+                    Event::UserEvent(event),
+                    &self.window_target,
+                    &mut control_flow,
+                    &mut callback,
+                );
+            }
+
             // do a second run of post-dispatch-triggers, to handle user-generated "request-redraw"
             // in response of resize & friends
-            self.post_dispatch_triggers();
-            {
-                let mut guard = sink.lock().unwrap();
-                guard.empty_with(|evt| {
-                    sticky_exit_callback(
-                        evt,
-                        &self.window_target,
-                        &mut control_flow,
-                        &mut callback,
-                    );
-                });
-            }
+            self.post_dispatch_triggers(&mut callback, &mut control_flow);
+
             // send Events cleared
             {
                 sticky_exit_callback(
-                    crate::event::Event::EventsCleared,
+                    Event::EventsCleared,
                     &self.window_target,
                     &mut control_flow,
                     &mut callback,
@@ -542,24 +595,32 @@ impl<T: 'static> EventLoop<T> {
                 ControlFlow::Exit => break,
                 ControlFlow::Poll => {
                     // non-blocking dispatch
-                    self.inner_loop
-                        .dispatch(Some(::std::time::Duration::from_millis(0)), &mut ())
+                    self.poll
+                        .poll(&mut events, Some(Duration::from_millis(0)))
                         .unwrap();
+                    events.clear();
+
                     callback(
-                        crate::event::Event::NewEvents(crate::event::StartCause::Poll),
+                        Event::NewEvents(StartCause::Poll),
                         &self.window_target,
                         &mut control_flow,
                     );
                 }
                 ControlFlow::Wait => {
+<<<<<<< HEAD
                     let timeout = if instant_wakeup {
                         Some(::std::time::Duration::from_millis(0))
                     } else {
                         None
                     };
                     self.inner_loop.dispatch(timeout, &mut ()).unwrap();
+=======
+                    self.poll.poll(&mut events, None).unwrap();
+                    events.clear();
+
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                     callback(
-                        crate::event::Event::NewEvents(crate::event::StartCause::WaitCancelled {
+                        Event::NewEvents(StartCause::WaitCancelled {
                             start: Instant::now(),
                             requested_resume: None,
                         }),
@@ -573,29 +634,27 @@ impl<T: 'static> EventLoop<T> {
                     let duration = if deadline > start && !instant_wakeup {
                         deadline - start
                     } else {
-                        ::std::time::Duration::from_millis(0)
+                        Duration::from_millis(0)
                     };
-                    self.inner_loop.dispatch(Some(duration), &mut ()).unwrap();
+                    self.poll.poll(&mut events, Some(duration)).unwrap();
+                    events.clear();
+
                     let now = Instant::now();
                     if now < deadline {
                         callback(
-                            crate::event::Event::NewEvents(
-                                crate::event::StartCause::WaitCancelled {
-                                    start,
-                                    requested_resume: Some(deadline),
-                                },
-                            ),
+                            Event::NewEvents(StartCause::WaitCancelled {
+                                start,
+                                requested_resume: Some(deadline),
+                            }),
                             &self.window_target,
                             &mut control_flow,
                         );
                     } else {
                         callback(
-                            crate::event::Event::NewEvents(
-                                crate::event::StartCause::ResumeTimeReached {
-                                    start,
-                                    requested_resume: deadline,
-                                },
-                            ),
+                            Event::NewEvents(StartCause::ResumeTimeReached {
+                                start,
+                                requested_resume: deadline,
+                            }),
                             &self.window_target,
                             &mut control_flow,
                         );
@@ -604,11 +663,7 @@ impl<T: 'static> EventLoop<T> {
             }
         }
 
-        callback(
-            crate::event::Event::LoopDestroyed,
-            &self.window_target,
-            &mut control_flow,
-        );
+        callback(Event::LoopDestroyed, &self.window_target, &mut control_flow);
     }
 
     pub fn primary_monitor(&self) -> MonitorHandle {
@@ -635,12 +690,16 @@ impl<T> EventLoopWindowTarget<T> {
  */
 
 impl<T> EventLoop<T> {
-    fn post_dispatch_triggers(&mut self) {
-        let mut sink = self.sink.lock().unwrap();
-        let window_target = match self.window_target.p {
-            crate::platform_impl::EventLoopWindowTarget::Wayland(ref wt) => wt,
-            _ => unreachable!(),
+    fn post_dispatch_triggers<F>(&mut self, mut callback: F, control_flow: &mut ControlFlow)
+    where
+        F: FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
+    {
+        let window_target = get_target(&self.window_target);
+
+        let mut callback = |event: Event<'_, T>| {
+            sticky_exit_callback(event, &self.window_target, control_flow, &mut callback);
         };
+
         // prune possible dead windows
         {
             let mut cleanup_needed = window_target.cleanup_needed.lock().unwrap();
@@ -648,22 +707,45 @@ impl<T> EventLoop<T> {
                 let pruned = window_target.store.lock().unwrap().cleanup();
                 *cleanup_needed = false;
                 for wid in pruned {
+<<<<<<< HEAD
                     sink.send_window_event(crate::event::WindowEvent::Destroyed, wid);
+=======
+                    callback(Event::WindowEvent {
+                        window_id: crate::window::WindowId(
+                            crate::platform_impl::WindowId::Wayland(wid),
+                        ),
+                        event: WindowEvent::Destroyed,
+                    });
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                 }
             }
         }
         // process pending resize/refresh
         window_target.store.lock().unwrap().for_each(
-            |newsize, size, new_dpi, refresh, frame_refresh, closed, wid, frame| {
+            |newsize, size, prev_dpi, new_dpi, refresh, frame_refresh, closed, wid, frame| {
+                let window_id =
+                    crate::window::WindowId(crate::platform_impl::WindowId::Wayland(wid));
                 if let Some(frame) = frame {
                     if let Some((w, h)) = newsize {
                         frame.resize(w, h);
                         frame.refresh();
                         let logical_size = crate::dpi::LogicalSize::new(w as f64, h as f64);
+<<<<<<< HEAD
                         sink.send_window_event(
                             crate::event::WindowEvent::Resized(logical_size),
                             wid,
                         );
+=======
+                        let physical_size =
+                            logical_size.to_physical(new_dpi.unwrap_or(prev_dpi) as f64);
+
+                        callback(Event::WindowEvent {
+                            window_id: crate::window::WindowId(
+                                crate::platform_impl::WindowId::Wayland(wid),
+                            ),
+                            event: WindowEvent::Resized(physical_size),
+                        });
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                         *size = (w, h);
                     } else if frame_refresh {
                         frame.refresh();
@@ -671,6 +753,7 @@ impl<T> EventLoop<T> {
                             frame.surface().commit()
                         }
                     }
+<<<<<<< HEAD
                 }
                 if let Some(dpi) = new_dpi {
                     sink.send_window_event(
@@ -683,9 +766,50 @@ impl<T> EventLoop<T> {
                 }
                 if closed {
                     sink.send_window_event(crate::event::WindowEvent::CloseRequested, wid);
+=======
+
+                    if let Some(dpi) = new_dpi {
+                        let dpi = dpi as f64;
+                        let logical_size = LogicalSize::from(*size);
+                        let mut new_inner_size = Some(logical_size.to_physical(dpi));
+
+                        callback(Event::WindowEvent {
+                            window_id,
+                            event: WindowEvent::HiDpiFactorChanged {
+                                hidpi_factor: dpi,
+                                new_inner_size: &mut new_inner_size,
+                            },
+                        });
+
+                        if let Some(new_size) = new_inner_size {
+                            let (w, h) = new_size.to_logical(dpi).into();
+                            frame.resize(w, h);
+                            *size = (w, h);
+                        }
+                    }
+                }
+                if refresh {
+                    callback(Event::WindowEvent {
+                        window_id,
+                        event: WindowEvent::RedrawRequested,
+                    });
+                }
+                if closed {
+                    callback(Event::WindowEvent {
+                        window_id,
+                        event: WindowEvent::CloseRequested,
+                    });
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                 }
             },
         )
+    }
+}
+
+fn get_target<T>(target: &RootELW<T>) -> &EventLoopWindowTarget<T> {
+    match target.p {
+        crate::platform_impl::EventLoopWindowTarget::Wayland(ref wt) => wt,
+        _ => unreachable!(),
     }
 }
 
@@ -693,6 +817,7 @@ impl<T> EventLoop<T> {
  * Wayland protocol implementations
  */
 
+<<<<<<< HEAD
 struct SeatManager<T: 'static> {
     sink: Arc<Mutex<WindowEventsSink<T>>>,
     store: Arc<Mutex<WindowStore>>,
@@ -701,6 +826,12 @@ struct SeatManager<T: 'static> {
     relative_pointer_manager_proxy: Rc<RefCell<Option<ZwpRelativePointerManagerV1>>>,
     pointer_constraints_proxy: Arc<Mutex<Option<ZwpPointerConstraintsV1>>>,
     cursor_manager: Arc<Mutex<CursorManager>>,
+=======
+struct SeatManager {
+    sink: WindowEventsSink,
+    store: Arc<Mutex<WindowStore>>,
+    seats: Arc<Mutex<Vec<(u32, wl_seat::WlSeat)>>>,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 }
 
 impl<T: 'static> SeatManager<T> {
@@ -715,7 +846,6 @@ impl<T: 'static> SeatManager<T> {
             relative_pointer_manager_proxy: self.relative_pointer_manager_proxy.clone(),
             keyboard: None,
             touch: None,
-            kbd_sender: self.kbd_sender.clone(),
             modifiers_tracker: Arc::new(Mutex::new(ModifiersState::default())),
             cursor_manager: self.cursor_manager.clone(),
         };
@@ -739,10 +869,14 @@ impl<T: 'static> SeatManager<T> {
     }
 }
 
+<<<<<<< HEAD
 struct SeatData<T> {
     sink: Arc<Mutex<WindowEventsSink<T>>>,
+=======
+struct SeatData {
+    sink: WindowEventsSink,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     store: Arc<Mutex<WindowStore>>,
-    kbd_sender: ::calloop::channel::Sender<(crate::event::WindowEvent, super::WindowId)>,
     pointer: Option<wl_pointer::WlPointer>,
     relative_pointer: Option<ZwpRelativePointerV1>,
     relative_pointer_manager_proxy: Rc<RefCell<Option<ZwpRelativePointerManagerV1>>>,
@@ -798,7 +932,7 @@ impl<T: 'static> SeatData<T> {
                 if capabilities.contains(wl_seat::Capability::Keyboard) && self.keyboard.is_none() {
                     self.keyboard = Some(super::keyboard::init_keyboard(
                         &seat,
-                        self.kbd_sender.clone(),
+                        self.sink.clone(),
                         self.modifiers_tracker.clone(),
                     ))
                 }

@@ -30,7 +30,11 @@ use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 
 pub fn implement_pointer<T: 'static>(
     seat: &wl_seat::WlSeat,
+<<<<<<< HEAD
     sink: Arc<Mutex<WindowEventsSink<T>>>,
+=======
+    sink: WindowEventsSink,
+>>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     store: Arc<Mutex<WindowStore>>,
     modifiers_tracker: Arc<Mutex<ModifiersState>>,
     cursor_manager: Arc<Mutex<CursorManager>>,
@@ -43,7 +47,6 @@ pub fn implement_pointer<T: 'static>(
 
         pointer.implement_closure(
             move |evt, pointer| {
-                let mut sink = sink.lock().unwrap();
                 let store = store.lock().unwrap();
                 let mut cursor_manager = cursor_manager.lock().unwrap();
                 match evt {
