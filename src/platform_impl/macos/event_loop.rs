@@ -92,7 +92,7 @@ impl<T> EventLoop<T> {
 
     pub fn run_return<F>(&mut self, callback: F)
     where
-        F: FnMut(Event<T>, &RootWindowTarget<T>, &mut ControlFlow),
+        F: FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
     {
         unsafe {
             let _pool = NSAutoreleasePool::new(nil);
@@ -104,16 +104,6 @@ impl<T> EventLoop<T> {
         }
     }
 
-<<<<<<< HEAD
-=======
-    pub fn run_return<F>(&mut self, _callback: F)
-    where
-        F: FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
-    {
-        unimplemented!();
-    }
-
->>>>>>> macOS: Dpi overhaul (#997)
     pub fn create_proxy(&self) -> Proxy<T> {
         Proxy::new(self.window_target.p.sender.clone())
     }

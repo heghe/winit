@@ -121,18 +121,15 @@ fn create_window(
     unsafe {
         let pool = NSAutoreleasePool::new(nil);
         let screen = match attrs.fullscreen {
-<<<<<<< HEAD
             Some(Fullscreen::Borderless(RootMonitorHandle { inner: ref monitor }))
             | Some(Fullscreen::Exclusive(RootVideoMode {
                 video_mode: VideoMode { ref monitor, .. },
             })) => {
                 let monitor_screen = monitor.ns_screen();
                 Some(monitor_screen.unwrap_or(appkit::NSScreen::mainScreen(nil)))
-=======
-            Some(ref monitor_id) => {
-                let monitor_screen = monitor_id.inner.ns_screen();
-                Some(monitor_screen.unwrap_or(NSScreen::mainScreen(nil)))
->>>>>>> macOS: Dpi overhaul (#997)
+            // Some(ref monitor_id) => {
+            //     let monitor_screen = monitor_id.inner.ns_screen();
+            //     Some(monitor_screen.unwrap_or(NSScreen::mainScreen(nil)))
             }
             None => None,
         };

@@ -50,7 +50,7 @@ pub trait EventHandler: Debug {
 }
 
 struct EventLoopHandler<T: 'static> {
-    callback: Box<dyn FnMut(Event<T>, &RootWindowTarget<T>, &mut ControlFlow)>,
+    callback: Box<dyn FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow)>,
     will_exit: bool,
     window_target: Rc<RootWindowTarget<T>>,
 }
@@ -64,17 +64,15 @@ impl<T> Debug for EventLoopHandler<T> {
     }
 }
 
-<<<<<<< HEAD
+
 impl<T> EventHandler for EventLoopHandler<T> {
-    fn handle_nonuser_event(&mut self, event: Event<Never>, control_flow: &mut ControlFlow) {
-=======
-impl<F, T> EventHandler for EventLoopHandler<F, T>
-where
-    F: 'static + FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
-    T: 'static,
-{
     fn handle_nonuser_event(&mut self, event: Event<'_, Never>, control_flow: &mut ControlFlow) {
->>>>>>> macOS: Dpi overhaul (#997)
+// impl<F, T> EventHandler for EventLoopHandler<F, T>
+// where
+//     F: 'static + FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
+//     T: 'static,
+// {
+//     fn handle_nonuser_event(&mut self, event: Event<'_, Never>, control_flow: &mut ControlFlow) {
         (self.callback)(event.userify(), &self.window_target, control_flow);
         self.will_exit |= *control_flow == ControlFlow::Exit;
         if self.will_exit {
@@ -103,12 +101,9 @@ struct Handler {
     control_flow_prev: Mutex<ControlFlow>,
     start_time: Mutex<Option<Instant>>,
     callback: Mutex<Option<Box<dyn EventHandler>>>,
-<<<<<<< HEAD
-    pending_events: Mutex<VecDeque<Event<Never>>>,
-=======
     pending_events: Mutex<VecDeque<Event<'static, Never>>>,
-    deferred_events: Mutex<VecDeque<EventWrapper>>,
->>>>>>> macOS: Dpi overhaul (#997)
+    // pending_events: Mutex<VecDeque<Event<'static, Never>>>,
+    // deferred_events: Mutex<VecDeque<EventWrapper>>,
     pending_redraw: Mutex<Vec<WindowId>>,
     waker: Mutex<EventLoopWaker>,
 }
@@ -121,15 +116,12 @@ impl Handler {
         self.pending_events.lock().unwrap()
     }
 
-<<<<<<< HEAD
     fn redraw<'a>(&'a self) -> MutexGuard<'a, Vec<WindowId>> {
-=======
-    fn deferred(&self) -> MutexGuard<'_, VecDeque<EventWrapper>> {
-        self.deferred_events.lock().unwrap()
-    }
-
-    fn redraw(&self) -> MutexGuard<'_, Vec<WindowId>> {
->>>>>>> macOS: Dpi overhaul (#997)
+    // fn deferred(&self) -> MutexGuard<'_, VecDeque<EventWrapper>> {
+    //     self.deferred_events.lock().unwrap()
+    // }
+    //
+    // fn redraw(&self) -> MutexGuard<'_, Vec<WindowId>> {
         self.pending_redraw.lock().unwrap()
     }
 
@@ -173,13 +165,9 @@ impl Handler {
         mem::replace(&mut *self.events(), Default::default())
     }
 
-<<<<<<< HEAD
-=======
-    fn take_deferred(&self) -> VecDeque<EventWrapper> {
-        mem::replace(&mut *self.deferred(), Default::default())
-    }
-
->>>>>>> macOS: Dpi overhaul (#997)
+    // fn take_deferred(&self) -> VecDeque<EventWrapper> {
+    //     mem::replace(&mut *self.deferred(), Default::default())
+    // }
     fn should_redraw(&self) -> Vec<WindowId> {
         mem::replace(&mut *self.redraw(), Default::default())
     }
@@ -247,12 +235,9 @@ impl AppState {
     // This function extends lifetime of `callback` to 'static as its side effect
     pub unsafe fn set_callback<F, T>(callback: F, window_target: Rc<RootWindowTarget<T>>)
     where
-<<<<<<< HEAD
-        F: FnMut(Event<T>, &RootWindowTarget<T>, &mut ControlFlow),
-=======
-        F: 'static + FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
-        T: 'static,
->>>>>>> macOS: Dpi overhaul (#997)
+        F: FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
+        // F: 'static + FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow),
+        // T: 'static,
     {
         *HANDLER.callback.lock().unwrap() = Some(Box::new(EventLoopHandler {
             // This transmute is always safe, in case it was reached through `run`, since our
@@ -260,8 +245,8 @@ impl AppState {
             // they passed to callback will actually outlive it, some apps just can't move
             // everything to event loop, so this is something that they should care about.
             callback: mem::transmute::<
-                Box<dyn FnMut(Event<T>, &RootWindowTarget<T>, &mut ControlFlow)>,
-                Box<dyn FnMut(Event<T>, &RootWindowTarget<T>, &mut ControlFlow)>,
+                Box<dyn FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow)>,
+                Box<dyn FnMut(Event<'_, T>, &RootWindowTarget<T>, &mut ControlFlow)>,
             >(Box::new(callback)),
             will_exit: false,
             window_target,
@@ -336,26 +321,23 @@ impl AppState {
         HANDLER.events().append(&mut events);
     }
 
-<<<<<<< HEAD
-=======
-    pub fn send_event_immediately(wrapper: EventWrapper) {
-        if !unsafe { msg_send![class!(NSThread), isMainThread] } {
-            panic!("Event sent from different thread: {:#?}", wrapper);
-        }
-        HANDLER.deferred().push_back(wrapper);
-        if !HANDLER.get_in_callback() {
-            HANDLER.set_in_callback(true);
-            for wrapper in HANDLER.take_deferred() {
-                match wrapper {
-                    EventWrapper::StaticEvent(event) => HANDLER.handle_nonuser_event(event),
-                    EventWrapper::EventProxy(proxy) => HANDLER.handle_event(proxy),
-                };
-            }
-            HANDLER.set_in_callback(false);
-        }
-    }
+    // pub fn send_event_immediately(wrapper: EventWrapper) {
+    //     if !unsafe { msg_send![class!(NSThread), isMainThread] } {
+    //         panic!("Event sent from different thread: {:#?}", wrapper);
+    //     }
+    //     HANDLER.deferred().push_back(wrapper);
+    //     if !HANDLER.get_in_callback() {
+    //         HANDLER.set_in_callback(true);
+    //         for wrapper in HANDLER.take_deferred() {
+    //             match wrapper {
+    //                 EventWrapper::StaticEvent(event) => HANDLER.handle_nonuser_event(event),
+    //                 EventWrapper::EventProxy(proxy) => HANDLER.handle_event(proxy),
+    //             };
+    //         }
+    //         HANDLER.set_in_callback(false);
+    //     }
+    // }
 
->>>>>>> macOS: Dpi overhaul (#997)
     pub fn cleared() {
         if !HANDLER.is_ready() {
             return;

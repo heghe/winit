@@ -92,24 +92,15 @@ impl WindowDelegateState {
             suggested_size: self.view_size(),
             hidpi_factor,
         });
-        AppState::send_event_immediately(wrapper);
+        // AppState::send_event_immediately(wrapper);
     }
 
     pub fn emit_resize_event(&mut self) {
-<<<<<<< HEAD
         let rect = unsafe { NSView::frame(*self.ns_view) };
-        let size = LogicalSize::new(rect.size.width as f64, rect.size.height as f64);
-        self.emit_event(WindowEvent::Resized(size));
-=======
         let hidpi_factor = self.get_hidpi_factor();
-        let physical_size = self.view_size().to_physical(hidpi_factor);
-        let event = Event::WindowEvent {
-            window_id: WindowId(get_window_id(*self.ns_window)),
-            event: WindowEvent::Resized(physical_size),
-        };
-        let wrapper = EventWrapper::StaticEvent(event);
-        AppState::send_event_immediately(wrapper);
->>>>>>> macOS: Dpi overhaul (#997)
+        let logical_size = LogicalSize::new(rect.size.width as f64, rect.size.height as f64);
+        let size = logical_size.to_physical(hidpi_factor);
+        self.emit_event(WindowEvent::Resized(size));
     }
 
     fn emit_move_event(&mut self) {
