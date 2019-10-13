@@ -6,7 +6,7 @@ use crate::event::{
 };
 
 use super::{
-    event_loop::{CursorManager, WindowEventsSink},
+    event_loop::{CursorManager, EventsSink},
     window::WindowStore,
     DeviceId,
 };
@@ -28,13 +28,9 @@ use smithay_client_toolkit::reexports::protocols::unstable::pointer_constraints:
 
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 
-pub fn implement_pointer<T: 'static>(
+pub fn implement_pointer(
     seat: &wl_seat::WlSeat,
-<<<<<<< HEAD
-    sink: Arc<Mutex<WindowEventsSink<T>>>,
-=======
-    sink: WindowEventsSink,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
+    sink: EventsSink,
     store: Arc<Mutex<WindowStore>>,
     modifiers_tracker: Arc<Mutex<ModifiersState>>,
     cursor_manager: Arc<Mutex<CursorManager>>,
@@ -240,15 +236,14 @@ pub fn implement_pointer<T: 'static>(
     .unwrap()
 }
 
-pub fn implement_relative_pointer<T: 'static>(
-    sink: Arc<Mutex<WindowEventsSink<T>>>,
+pub fn implement_relative_pointer(
+    sink: EventsSink,
     pointer: &WlPointer,
     manager: &ZwpRelativePointerManagerV1,
 ) -> Result<ZwpRelativePointerV1, ()> {
     manager.get_relative_pointer(pointer, |rel_pointer| {
         rel_pointer.implement_closure(
             move |evt, _rel_pointer| {
-                let mut sink = sink.lock().unwrap();
                 match evt {
                     Event::RelativeMotion { dx, dy, .. } => sink
                         .send_device_event(DeviceEvent::MouseMotion { delta: (dx, dy) }, DeviceId),

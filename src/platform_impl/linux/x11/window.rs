@@ -47,26 +47,16 @@ pub struct SharedState {
     pub inner_position_rel_parent: Option<(i32, i32)>,
     pub guessed_dpi: Option<f64>,
     pub last_monitor: Option<X11MonitorHandle>,
-<<<<<<< HEAD
-    pub dpi_adjusted: Option<(f64, f64)>,
-    pub fullscreen: Option<Fullscreen>,
-=======
     pub dpi_adjusted: Option<(u32, u32)>,
-    pub fullscreen: Option<RootMonitorHandle>,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
+    pub fullscreen: Option<Fullscreen>,
     // Used to restore position after exiting fullscreen
     pub restore_position: Option<(i32, i32)>,
     // Used to restore video mode after exiting fullscreen
     pub desktop_video_mode: Option<(ffi::RRCrtc, ffi::RRMode)>,
     pub frame_extents: Option<util::FrameExtentsHeuristic>,
-<<<<<<< HEAD
-    pub min_inner_size: Option<LogicalSize>,
-    pub max_inner_size: Option<LogicalSize>,
-    pub is_visible: bool,
-=======
     pub min_inner_size: Option<Size>,
     pub max_inner_size: Option<Size>,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
+    pub is_visible: bool,
 }
 
 impl SharedState {

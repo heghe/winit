@@ -8,7 +8,7 @@ use smithay_client_toolkit::reexports::client::ConnectError;
 
 pub use self::x11::XNotSupported;
 use self::x11::{
-    ffi::XVisualInfo, get_xtarget, util::WindowType as XWindowType, XConnection, XError,
+    ffi::XVisualInfo, util::WindowType as XWindowType, XConnection, XError,
 };
 use crate::{
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
@@ -575,7 +575,7 @@ impl<T: 'static> EventLoop<T> {
                 .into_iter()
                 .map(MonitorHandle::Wayland)
                 .collect(),
-            EventLoop::X(ref evlp) => get_xtarget(&evlp.target)
+            EventLoop::X(ref evlp) => evlp
                 .x_connection()
                 .available_monitors()
                 .into_iter()
@@ -589,7 +589,7 @@ impl<T: 'static> EventLoop<T> {
         match *self {
             EventLoop::Wayland(ref evlp) => MonitorHandle::Wayland(evlp.primary_monitor()),
             EventLoop::X(ref evlp) => {
-                MonitorHandle::X(get_xtarget(&evlp.target).x_connection().primary_monitor())
+                MonitorHandle::X(evlp.x_connection().primary_monitor())
             }
         }
     }

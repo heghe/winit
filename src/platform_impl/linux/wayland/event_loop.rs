@@ -3,11 +3,15 @@ use std::{
     collections::VecDeque,
     fmt,
     io::ErrorKind,
+    rc::Rc,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-<<<<<<< HEAD
+use mio::{Events, Poll, PollOpt, Ready, Token};
+
+use mio_extras::channel::{channel, Receiver, Sender};
+
 use smithay_client_toolkit::reexports::protocols::unstable::pointer_constraints::v1::client::{
     zwp_locked_pointer_v1::ZwpLockedPointerV1, zwp_pointer_constraints_v1::ZwpPointerConstraintsV1,
 };
@@ -20,22 +24,20 @@ use smithay_client_toolkit::pointer::{AutoPointer, AutoThemer};
 use smithay_client_toolkit::reexports::client::protocol::{
     wl_compositor::WlCompositor, wl_shm::WlShm, wl_surface::WlSurface,
 };
-=======
-use mio::{Events, Poll, PollOpt, Ready, Token};
-
-use mio_extras::channel::{channel, Receiver, Sender};
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 
 use crate::{
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
-    event::{Event, ModifiersState, StartCause, WindowEvent},
+    event::{DeviceEvent, DeviceId as RootDeviceId, Event, ModifiersState, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopClosed, EventLoopWindowTarget as RootELW},
     monitor::{MonitorHandle as RootMonitorHandle, VideoMode as RootVideoMode},
     platform_impl::platform::{
-        sticky_exit_callback, MonitorHandle as PlatformMonitorHandle,
+        sticky_exit_callback,
+        DeviceId as PlatformDeviceId,
+        MonitorHandle as PlatformMonitorHandle,
         VideoMode as PlatformVideoMode,
+        WindowId as PlatformWindowId,
     },
-    window::CursorIcon,
+    window::{CursorIcon, WindowId as RootWindowId},
 };
 
 use super::{window::WindowStore, DeviceId, WindowId};
@@ -49,39 +51,36 @@ use smithay_client_toolkit::{
     Environment,
 };
 
-<<<<<<< HEAD
-pub struct WindowEventsSink<T> {
-    buffer: VecDeque<crate::event::Event<T>>,
+const KBD_TOKEN: Token = Token(0);
+const USER_TOKEN: Token = Token(1);
+const EVQ_TOKEN: Token = Token(2);
+
+#[derive(Clone)]
+pub struct EventsSink {
+    sender: Sender<Event<'static, ()>>,
 }
 
-impl<T> WindowEventsSink<T> {
-    pub fn new() -> WindowEventsSink<T> {
-        WindowEventsSink {
-            buffer: VecDeque::new(),
-        }
+impl EventsSink {
+    pub fn new(sender: Sender<Event<'static, ()>>) -> EventsSink {
+        EventsSink { sender }
     }
 
-    pub fn send_window_event(&mut self, evt: crate::event::WindowEvent, wid: WindowId) {
-        self.buffer.push_back(crate::event::Event::WindowEvent {
-            event: evt,
-            window_id: crate::window::WindowId(crate::platform_impl::WindowId::Wayland(wid)),
+    pub fn send_event(&self, event: Event<'static, ()>) {
+        self.sender.send(event).unwrap()
+    }
+
+    pub fn send_device_event(&self, event: DeviceEvent, device_id: DeviceId) {
+        self.send_event(Event::DeviceEvent {
+            event,
+            device_id: RootDeviceId(PlatformDeviceId::Wayland(device_id)),
         });
     }
 
-    pub fn send_device_event(&mut self, evt: crate::event::DeviceEvent, dev_id: DeviceId) {
-        self.buffer.push_back(crate::event::Event::DeviceEvent {
-            event: evt,
-            device_id: crate::event::DeviceId(crate::platform_impl::DeviceId::Wayland(dev_id)),
+    pub fn send_window_event(&self, event: WindowEvent<'static>, window_id: WindowId) {
+        self.send_event(Event::WindowEvent {
+            event,
+            window_id: RootWindowId(PlatformWindowId::Wayland(window_id)),
         });
-    }
-
-    fn empty_with<F>(&mut self, mut callback: F)
-    where
-        F: FnMut(crate::event::Event<T>),
-    {
-        for evt in self.buffer.drain(..) {
-            callback(evt)
-        }
     }
 }
 
@@ -224,31 +223,6 @@ impl CursorManager {
                 }
             }
         }
-=======
-const KBD_TOKEN: Token = Token(0);
-const USER_TOKEN: Token = Token(1);
-const EVQ_TOKEN: Token = Token(2);
-
-#[derive(Clone)]
-pub struct WindowEventsSink {
-    sender: Sender<(WindowEvent<'static>, crate::window::WindowId)>,
-}
-
-impl WindowEventsSink {
-    pub fn new(
-        sender: Sender<(WindowEvent<'static>, crate::window::WindowId)>,
-    ) -> WindowEventsSink {
-        WindowEventsSink { sender }
-    }
-
-    pub fn send_event(&self, evt: WindowEvent<'static>, wid: WindowId) {
-        self.sender
-            .send((
-                evt,
-                crate::window::WindowId(crate::platform_impl::WindowId::Wayland(wid)),
-            ))
-            .unwrap();
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     }
 }
 
@@ -259,21 +233,9 @@ pub struct EventLoop<T: 'static> {
     pub display: Arc<Display>,
     // The output manager
     pub outputs: OutputMgr,
-<<<<<<< HEAD
-    // Our sink, shared with some handlers, buffering the events
-    sink: Arc<Mutex<WindowEventsSink<T>>>,
-    pending_user_events: Rc<RefCell<VecDeque<T>>>,
-    // Utility for grabbing the cursor and changing visibility
-    _user_source: ::calloop::Source<::calloop::channel::Channel<T>>,
-    user_sender: ::calloop::channel::Sender<T>,
-    _kbd_source: ::calloop::Source<
-        ::calloop::channel::Channel<(crate::event::WindowEvent, super::WindowId)>,
-    >,
-=======
-    kbd_channel: Receiver<(WindowEvent<'static>, crate::window::WindowId)>,
+    kbd_channel: Receiver<Event<'static, ()>>,
     user_channel: Receiver<T>,
     user_sender: Sender<T>,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     window_target: RootELW<T>,
 }
 
@@ -281,21 +243,12 @@ pub struct EventLoop<T: 'static> {
 //
 // We should only try and wake up the `EventLoop` if it still exists, so we hold Weak ptrs.
 pub struct EventLoopProxy<T: 'static> {
-<<<<<<< HEAD
-    user_sender: calloop::channel::Sender<T>,
-}
-
-pub struct EventLoopWindowTarget<T> {
-    // The event queue
-    pub evq: RefCell<::calloop::Source<EventQueue>>,
-=======
     user_sender: Sender<T>,
 }
 
 pub struct EventLoopWindowTarget<T> {
     // the event queue
     pub evq: RefCell<EventQueue>,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     // The window store
     pub store: Arc<Mutex<WindowStore>>,
     // The cursor manager
@@ -335,41 +288,22 @@ impl<T: 'static> EventLoop<T> {
 
         let poll = Poll::new().unwrap();
 
-<<<<<<< HEAD
-        let (kbd_sender, kbd_channel) = ::calloop::channel::channel();
-        let kbd_sink = sink.clone();
-        let kbd_source = inner_loop
-            .handle()
-            .insert_source(kbd_channel, move |evt, &mut ()| {
-                if let ::calloop::channel::Event::Msg((evt, wid)) = evt {
-                    kbd_sink.lock().unwrap().send_window_event(evt, wid);
-                }
-            })
-=======
         let (kbd_sender, kbd_channel) = channel();
 
-        let sink = WindowEventsSink::new(kbd_sender);
+        let sink = EventsSink::new(kbd_sender);
 
         poll.register(&kbd_channel, KBD_TOKEN, Ready::readable(), PollOpt::level())
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             .unwrap();
 
         let pointer_constraints_proxy = Arc::new(Mutex::new(None));
 
         let mut seat_manager = SeatManager {
-<<<<<<< HEAD
-            sink: sink.clone(),
-            relative_pointer_manager_proxy: Rc::new(RefCell::new(None)),
-            pointer_constraints_proxy: pointer_constraints_proxy.clone(),
-            store: store.clone(),
-            seats: seats.clone(),
-            kbd_sender,
-            cursor_manager: Arc::new(Mutex::new(CursorManager::new(pointer_constraints_proxy))),
-=======
             sink,
             store: store.clone(),
             seats: seats.clone(),
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
+            relative_pointer_manager_proxy: Rc::new(RefCell::new(None)),
+            pointer_constraints_proxy: pointer_constraints_proxy.clone(),
+            cursor_manager: Arc::new(Mutex::new(CursorManager::new(pointer_constraints_proxy))),
         };
 
         let cursor_manager = seat_manager.cursor_manager.clone();
@@ -537,9 +471,10 @@ impl<T: 'static> EventLoop<T> {
 
             self.post_dispatch_triggers(&mut callback, &mut control_flow);
 
-            while let Ok((event, window_id)) = self.kbd_channel.try_recv() {
+            while let Ok(event) = self.kbd_channel.try_recv() {
+                let event = event.map_nonuser_event().unwrap();
                 sticky_exit_callback(
-                    Event::WindowEvent { event, window_id },
+                    event,
                     &self.window_target,
                     &mut control_flow,
                     &mut callback,
@@ -607,18 +542,11 @@ impl<T: 'static> EventLoop<T> {
                     );
                 }
                 ControlFlow::Wait => {
-<<<<<<< HEAD
-                    let timeout = if instant_wakeup {
-                        Some(::std::time::Duration::from_millis(0))
-                    } else {
-                        None
-                    };
-                    self.inner_loop.dispatch(timeout, &mut ()).unwrap();
-=======
-                    self.poll.poll(&mut events, None).unwrap();
-                    events.clear();
+                    if !instant_wakeup {
+                        self.poll.poll(&mut events, None).unwrap();
+                        events.clear();
+                    }
 
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                     callback(
                         Event::NewEvents(StartCause::WaitCancelled {
                             start: Instant::now(),
@@ -707,16 +635,12 @@ impl<T> EventLoop<T> {
                 let pruned = window_target.store.lock().unwrap().cleanup();
                 *cleanup_needed = false;
                 for wid in pruned {
-<<<<<<< HEAD
-                    sink.send_window_event(crate::event::WindowEvent::Destroyed, wid);
-=======
                     callback(Event::WindowEvent {
                         window_id: crate::window::WindowId(
                             crate::platform_impl::WindowId::Wayland(wid),
                         ),
                         event: WindowEvent::Destroyed,
                     });
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                 }
             }
         }
@@ -730,12 +654,6 @@ impl<T> EventLoop<T> {
                         frame.resize(w, h);
                         frame.refresh();
                         let logical_size = crate::dpi::LogicalSize::new(w as f64, h as f64);
-<<<<<<< HEAD
-                        sink.send_window_event(
-                            crate::event::WindowEvent::Resized(logical_size),
-                            wid,
-                        );
-=======
                         let physical_size =
                             logical_size.to_physical(new_dpi.unwrap_or(prev_dpi) as f64);
 
@@ -745,7 +663,6 @@ impl<T> EventLoop<T> {
                             ),
                             event: WindowEvent::Resized(physical_size),
                         });
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                         *size = (w, h);
                     } else if frame_refresh {
                         frame.refresh();
@@ -753,20 +670,6 @@ impl<T> EventLoop<T> {
                             frame.surface().commit()
                         }
                     }
-<<<<<<< HEAD
-                }
-                if let Some(dpi) = new_dpi {
-                    sink.send_window_event(
-                        crate::event::WindowEvent::HiDpiFactorChanged(dpi as f64),
-                        wid,
-                    );
-                }
-                if refresh {
-                    sink.send_window_event(crate::event::WindowEvent::RedrawRequested, wid);
-                }
-                if closed {
-                    sink.send_window_event(crate::event::WindowEvent::CloseRequested, wid);
-=======
 
                     if let Some(dpi) = new_dpi {
                         let dpi = dpi as f64;
@@ -799,7 +702,6 @@ impl<T> EventLoop<T> {
                         window_id,
                         event: WindowEvent::CloseRequested,
                     });
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                 }
             },
         )
@@ -817,24 +719,16 @@ fn get_target<T>(target: &RootELW<T>) -> &EventLoopWindowTarget<T> {
  * Wayland protocol implementations
  */
 
-<<<<<<< HEAD
-struct SeatManager<T: 'static> {
-    sink: Arc<Mutex<WindowEventsSink<T>>>,
+struct SeatManager {
+    sink: EventsSink,
     store: Arc<Mutex<WindowStore>>,
     seats: Arc<Mutex<Vec<(u32, wl_seat::WlSeat)>>>,
-    kbd_sender: ::calloop::channel::Sender<(crate::event::WindowEvent, super::WindowId)>,
     relative_pointer_manager_proxy: Rc<RefCell<Option<ZwpRelativePointerManagerV1>>>,
     pointer_constraints_proxy: Arc<Mutex<Option<ZwpPointerConstraintsV1>>>,
     cursor_manager: Arc<Mutex<CursorManager>>,
-=======
-struct SeatManager {
-    sink: WindowEventsSink,
-    store: Arc<Mutex<WindowStore>>,
-    seats: Arc<Mutex<Vec<(u32, wl_seat::WlSeat)>>>,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 }
 
-impl<T: 'static> SeatManager<T> {
+impl SeatManager {
     fn add_seat(&mut self, id: u32, version: u32, registry: wl_registry::WlRegistry) {
         use std::cmp::min;
 
@@ -869,13 +763,8 @@ impl<T: 'static> SeatManager<T> {
     }
 }
 
-<<<<<<< HEAD
-struct SeatData<T> {
-    sink: Arc<Mutex<WindowEventsSink<T>>>,
-=======
 struct SeatData {
-    sink: WindowEventsSink,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
+    sink: EventsSink,
     store: Arc<Mutex<WindowStore>>,
     pointer: Option<wl_pointer::WlPointer>,
     relative_pointer: Option<ZwpRelativePointerV1>,
@@ -886,7 +775,7 @@ struct SeatData {
     cursor_manager: Arc<Mutex<CursorManager>>,
 }
 
-impl<T: 'static> SeatData<T> {
+impl SeatData {
     fn receive(&mut self, evt: wl_seat::Event, seat: wl_seat::WlSeat) {
         match evt {
             wl_seat::Event::Name { .. } => (),
@@ -966,7 +855,7 @@ impl<T: 'static> SeatData<T> {
     }
 }
 
-impl<T> Drop for SeatData<T> {
+impl Drop for SeatData {
     fn drop(&mut self) {
         if let Some(pointer) = self.pointer.take() {
             if pointer.as_ref().version() >= 3 {

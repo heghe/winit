@@ -65,22 +65,11 @@ pub struct EventLoopWindowTarget<T> {
 }
 
 pub struct EventLoop<T: 'static> {
-<<<<<<< HEAD
-    inner_loop: ::calloop::EventLoop<()>,
-    _x11_source: ::calloop::Source<::calloop::generic::Generic<::calloop::generic::EventedRawFd>>,
-    _user_source: ::calloop::Source<::calloop::channel::Channel<T>>,
-    pending_user_events: Rc<RefCell<VecDeque<T>>>,
-    event_processor: Rc<RefCell<EventProcessor<T>>>,
-    user_sender: ::calloop::channel::Sender<T>,
-    pending_events: Rc<RefCell<VecDeque<Event<T>>>>,
-    pub(crate) target: Rc<RootELW<T>>,
-=======
     poll: Poll,
     event_processor: EventProcessor<T>,
     user_channel: Receiver<T>,
     user_sender: Sender<T>,
     target: Rc<RootELW<T>>,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 }
 
 pub struct EventLoopProxy<T: 'static> {
@@ -178,30 +167,6 @@ impl<T: 'static> EventLoop<T> {
             _marker: ::std::marker::PhantomData,
         });
 
-        // A calloop event loop to drive us
-<<<<<<< HEAD
-        let inner_loop = ::calloop::EventLoop::new().unwrap();
-
-        // Handle user events
-        let pending_user_events = Rc::new(RefCell::new(VecDeque::new()));
-        let pending_user_events2 = pending_user_events.clone();
-
-        let (user_sender, user_channel) = ::calloop::channel::channel();
-
-        let _user_source = inner_loop
-            .handle()
-            .insert_source(user_channel, move |evt, &mut ()| {
-                if let ::calloop::channel::Event::Msg(msg) = evt {
-                    pending_user_events2.borrow_mut().push_back(msg);
-                }
-            })
-            .unwrap();
-
-        // Handle X11 events
-        let pending_events: Rc<RefCell<VecDeque<_>>> = Default::default();
-
-        let processor = EventProcessor {
-=======
         let poll = Poll::new().unwrap();
 
         let (user_sender, user_channel) = channel();
@@ -223,7 +188,6 @@ impl<T: 'static> EventLoop<T> {
         .unwrap();
 
         let event_processor = EventProcessor {
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             target: target.clone(),
             dnd,
             devices: Default::default(),
@@ -242,41 +206,12 @@ impl<T: 'static> EventLoop<T> {
             .select_xinput_events(root, ffi::XIAllDevices, ffi::XI_HierarchyChangedMask)
             .queue();
 
-<<<<<<< HEAD
-        processor.init_device(ffi::XIAllDevices);
-
-        let processor = Rc::new(RefCell::new(processor));
-        let event_processor = processor.clone();
-
-        // Setup the X11 event source
-        let mut x11_events =
-            ::calloop::generic::Generic::from_raw_fd(get_xtarget(&target).xconn.x11_fd);
-        x11_events.set_interest(::calloop::mio::Ready::readable());
-        let _x11_source = inner_loop
-            .handle()
-            .insert_source(x11_events, {
-                let pending_events = pending_events.clone();
-                move |evt, &mut ()| {
-                    if evt.readiness.is_readable() {
-                        let mut processor = processor.borrow_mut();
-                        let mut pending_events = pending_events.borrow_mut();
-                        drain_events(&mut processor, &mut pending_events);
-                    }
-                }
-            })
-            .unwrap();
-=======
         event_processor.init_device(ffi::XIAllDevices);
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
 
         let result = EventLoop {
             poll,
             user_channel,
             user_sender,
-<<<<<<< HEAD
-            pending_user_events,
-=======
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             event_processor,
             target,
         };
@@ -292,6 +227,10 @@ impl<T: 'static> EventLoop<T> {
 
     pub(crate) fn window_target(&self) -> &RootELW<T> {
         &self.target
+    }
+
+    pub(crate) fn x_connection(&self) -> &Arc<XConnection> {
+        get_xtarget(&self.target).x_connection()
     }
 
     pub fn run_return<F>(&mut self, mut callback: F)
@@ -351,12 +290,9 @@ impl<T: 'static> EventLoop<T> {
                 );
             }
 
-<<<<<<< HEAD
-=======
             let start = Instant::now();
             let (mut cause, deadline, timeout);
 
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
             match control_flow {
                 ControlFlow::Exit => break,
                 ControlFlow::Poll => {
@@ -386,11 +322,6 @@ impl<T: 'static> EventLoop<T> {
                 }
             }
 
-<<<<<<< HEAD
-            // If the user callback had any interaction with the X server,
-            // it may have received and buffered some user input events.
-            self.drain_events();
-=======
             if self.event_processor.poll() {
                 // If the XConnection already contains buffered events, we don't
                 // need to wait for data on the socket.
@@ -424,7 +355,6 @@ impl<T: 'static> EventLoop<T> {
                     &mut control_flow,
                 );
             }
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
         }
 
         callback(
@@ -442,29 +372,6 @@ impl<T: 'static> EventLoop<T> {
         ::std::process::exit(0);
     }
 
-<<<<<<< HEAD
-    fn drain_events(&self) {
-        let mut processor = self.event_processor.borrow_mut();
-        let mut pending_events = self.pending_events.borrow_mut();
-
-        drain_events(&mut processor, &mut pending_events);
-    }
-}
-
-fn drain_events<T: 'static>(
-    processor: &mut EventProcessor<T>,
-    pending_events: &mut VecDeque<Event<T>>,
-) {
-    let mut callback = |event| {
-        pending_events.push_back(event);
-    };
-
-    // process all pending events
-    let mut xev = MaybeUninit::uninit();
-    while unsafe { processor.poll_one_event(xev.as_mut_ptr()) } {
-        let mut xev = unsafe { xev.assume_init() };
-        processor.process_event(&mut xev, &mut callback);
-=======
     fn drain_events<F>(&mut self, callback: &mut F, control_flow: &mut ControlFlow)
     where
         F: FnMut(Event<'_, T>, &RootELW<T>, &mut ControlFlow),
@@ -478,7 +385,6 @@ fn drain_events<T: 'static>(
                 sticky_exit_callback(event, target, control_flow, callback);
             });
         }
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     }
 }
 

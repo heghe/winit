@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::event::{TouchPhase, WindowEvent};
 
-use super::{event_loop::WindowEventsSink, window::WindowStore, DeviceId, WindowId};
+use super::{event_loop::EventsSink, window::WindowStore, DeviceId, WindowId};
 
 use smithay_client_toolkit::reexports::client::protocol::{
     wl_seat,
@@ -15,13 +15,9 @@ struct TouchPoint {
     id: i32,
 }
 
-pub(crate) fn implement_touch<T: 'static>(
+pub(crate) fn implement_touch(
     seat: &wl_seat::WlSeat,
-<<<<<<< HEAD
-    sink: Arc<Mutex<WindowEventsSink<T>>>,
-=======
-    sink: WindowEventsSink,
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
+    sink: EventsSink,
     store: Arc<Mutex<WindowStore>>,
 ) -> WlTouch {
     let mut pending_ids = Vec::new();

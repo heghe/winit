@@ -939,26 +939,6 @@ impl<T: 'static> EventProcessor<T> {
                             ffi::XI_TouchEnd => TouchPhase::Ended,
                             _ => unreachable!(),
                         };
-<<<<<<< HEAD
-                        let dpi_factor =
-                            self.with_window(xev.event, |window| window.hidpi_factor());
-                        if let Some(dpi_factor) = dpi_factor {
-                            let location = LogicalPosition::from_physical(
-                                (xev.event_x as f64, xev.event_y as f64),
-                                dpi_factor,
-                            );
-                            callback(Event::WindowEvent {
-                                window_id,
-                                event: WindowEvent::Touch(Touch {
-                                    device_id: mkdid(xev.deviceid),
-                                    phase,
-                                    location,
-                                    force: None, // TODO
-                                    id: xev.detail as u64,
-                                }),
-                            })
-                        }
-=======
                         let location =
                             PhysicalPosition::new(xev.event_x as f64, xev.event_y as f64);
 
@@ -968,10 +948,10 @@ impl<T: 'static> EventProcessor<T> {
                                 device_id: mkdid(xev.deviceid),
                                 phase,
                                 location,
+                                force: None, // TODO
                                 id: xev.detail as u64,
                             }),
                         });
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
                     }
 
                     ffi::XI_RawButtonPress | ffi::XI_RawButtonRelease => {

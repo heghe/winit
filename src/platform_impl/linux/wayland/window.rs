@@ -1,10 +1,7 @@
 use raw_window_handle::unix::WaylandHandle;
 use std::{
     collections::VecDeque,
-<<<<<<< HEAD
     mem::replace,
-=======
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
     sync::{Arc, Mutex, Weak},
 };
 
@@ -53,18 +50,12 @@ impl Window {
     ) -> Result<Window, RootOsError> {
         // Create the surface first to get initial DPI
         let window_store = evlp.store.clone();
-<<<<<<< HEAD
         let cursor_manager = evlp.cursor_manager.clone();
-=======
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
         let surface = evlp.env.create_surface(move |dpi, surface| {
             window_store.lock().unwrap().dpi_change(&surface, dpi);
             surface.set_buffer_scale(dpi);
         });
 
-<<<<<<< HEAD
-        let window_store = evlp.store.clone();
-=======
         let dpi = get_dpi_factor(&surface) as f64;
         let (width, height) = attributes
             .inner_size
@@ -77,7 +68,6 @@ impl Window {
 
         let window_store = evlp.store.clone();
 
->>>>>>> Implement DPI Usability Upgrades for X11 and Wayland (#1098)
         let my_surface = surface.clone();
         let mut frame = SWindow::<ConceptFrame>::init_from_env(
             &evlp.env,
