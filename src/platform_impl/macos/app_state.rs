@@ -168,7 +168,7 @@ impl Handler {
         if let Some(ref mut callback) = *self.callback.lock().unwrap() {
             match wrapper {
                 EventWrapper::StaticEvent(event)
-                    => self.execute_callback(event, callback),
+                    => callback.handle_nonuser_event(event, &mut *self.control_flow.lock().unwrap()),
                 EventWrapper::EventProxy(proxy) => self.handle_proxy(proxy, callback),
             }
         }
@@ -197,7 +197,7 @@ impl Handler {
             },
         };
 
-        self.execute_callback(event, callback);
+        callback.handle_nonuser_event(event, &mut *self.control_flow.lock().unwrap());
 
         let physical_size = new_inner_size.unwrap_or(size);
         let logical_size = physical_size.to_logical(hidpi_factor);
@@ -213,10 +213,6 @@ impl Handler {
                 hidpi_factor,
             } => self.handle_hidpi_factor_changed_event(callback, ns_window, suggested_size, hidpi_factor),
         }
-    }
-
-    fn execute_callback(&self, event: Event<'static, Never>, callback: &mut Box<dyn EventHandler + 'static>) {
-        callback.handle_nonuser_event(event, &mut *self.control_flow.lock().unwrap());
     }
 }
 
