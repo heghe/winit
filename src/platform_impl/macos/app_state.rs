@@ -64,7 +64,6 @@ impl<T> Debug for EventLoopHandler<T> {
     }
 }
 
-
 impl<T> EventHandler for EventLoopHandler<T> {
     fn handle_nonuser_event(&mut self, event: Event<'_, Never>, control_flow: &mut ControlFlow) {
         (self.callback)(event.userify(), &self.window_target, control_flow);
@@ -167,8 +166,9 @@ impl Handler {
     fn handle_nonuser_event(&self, wrapper: EventWrapper) {
         if let Some(ref mut callback) = *self.callback.lock().unwrap() {
             match wrapper {
-                EventWrapper::StaticEvent(event)
-                    => callback.handle_nonuser_event(event, &mut *self.control_flow.lock().unwrap()),
+                EventWrapper::StaticEvent(event) => {
+                    callback.handle_nonuser_event(event, &mut *self.control_flow.lock().unwrap())
+                }
                 EventWrapper::EventProxy(proxy) => self.handle_proxy(proxy, callback),
             }
         }
@@ -211,7 +211,12 @@ impl Handler {
                 ns_window,
                 suggested_size,
                 hidpi_factor,
-            } => self.handle_hidpi_factor_changed_event(callback, ns_window, suggested_size, hidpi_factor),
+            } => self.handle_hidpi_factor_changed_event(
+                callback,
+                ns_window,
+                suggested_size,
+                hidpi_factor,
+            ),
         }
     }
 }
@@ -251,7 +256,9 @@ impl AppState {
         HANDLER.set_ready();
         HANDLER.waker().start();
         HANDLER.set_in_callback(true);
-        HANDLER.handle_nonuser_event(EventWrapper::StaticEvent(Event::NewEvents(StartCause::Init)));
+        HANDLER.handle_nonuser_event(EventWrapper::StaticEvent(Event::NewEvents(
+            StartCause::Init,
+        )));
         HANDLER.set_in_callback(false);
     }
 

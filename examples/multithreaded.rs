@@ -2,7 +2,7 @@ extern crate env_logger;
 use std::{collections::HashMap, sync::mpsc, thread, time::Duration};
 
 use winit::{
-    dpi::{Position, PhysicalPosition, Size, PhysicalSize},
+    dpi::{PhysicalPosition, PhysicalSize, Position, Size},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{CursorIcon, Fullscreen, WindowBuilder},
@@ -120,20 +120,24 @@ fn main() {
                                             size.width + 100,
                                             size.height + 100,
                                         ))
-                                    } else { WINDOW_SIZE }
-                                },
+                                    } else {
+                                        WINDOW_SIZE
+                                    }
+                                }
                                 false => WINDOW_SIZE,
                             }),
                             W => {
                                 if let Size::Physical(size) = WINDOW_SIZE {
                                     window
-                                    .set_cursor_position(Position::Physical(PhysicalPosition::new(
-                                        size.width as f64 / 2.0,
-                                        size.height as f64 / 2.0,
-                                    )))
-                                .unwrap()
+                                        .set_cursor_position(Position::Physical(
+                                            PhysicalPosition::new(
+                                                size.width as f64 / 2.0,
+                                                size.height as f64 / 2.0,
+                                            ),
+                                        ))
+                                        .unwrap()
                                 }
-                            },
+                            }
                             Z => {
                                 window.set_visible(false);
                                 thread::sleep(Duration::from_secs(1));

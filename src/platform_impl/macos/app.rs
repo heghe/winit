@@ -10,7 +10,7 @@ use objc::{
 };
 
 use crate::{
-    event::{DeviceEvent, ElementState, Event },
+    event::{DeviceEvent, ElementState, Event},
     platform_impl::platform::{app_state::AppState, event::EventWrapper, util, DEVICE_ID},
 };
 
