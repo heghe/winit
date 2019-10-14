@@ -77,7 +77,7 @@ impl WindowDelegateState {
             window_id: WindowId(get_window_id(*self.ns_window)),
             event,
         };
-        AppState::queue_event(event);
+        AppState::queue_event(EventWrapper::StaticEvent(event));
     }
 
     pub fn emit_static_hidpi_factor_changed_event(&mut self) {
@@ -92,7 +92,7 @@ impl WindowDelegateState {
             suggested_size: self.view_size(),
             hidpi_factor,
         });
-        // AppState::send_event_immediately(wrapper);
+        AppState::queue_event(wrapper);
     }
 
     pub fn emit_resize_event(&mut self) {
